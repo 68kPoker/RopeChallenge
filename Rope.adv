@@ -1,0 +1,255 @@
+
+(adventure Rope 1)
+
+(define welcome "Rope challenge!\n")
+
+@objects.adi
+
+(property tied)
+
+(variable span)
+
+(define (avail n &aux loc)
+	(setq loc (getp n parent))
+	(if (not (or (= loc curloc) (= loc %actor)))
+		(progn
+			(print "You can't see ")
+			(print (getp n short-description))
+			(print " here.\n")
+			(abort)
+		)
+	)
+)
+
+(define (check-rope loc)
+	(if (and (= (getp first-end parent) loc) (= (getp second-end parent) loc) (not (getp first-end tied)) (not (getp second-end tied)))
+		(progn
+			(disconnect first-end)
+			(disconnect second-end)
+			(connect loc rope)
+		)
+	)
+)
+
+(location green-room
+	(property 
+		north blue-room
+		south yellow-room
+		description "Green room.\nYou are in green room with green grass. The blue room can be seen to the north. The yellow room is located
+		to the south."
+		short-description "Green grass room"
+	)
+)
+
+(location blue-room
+	(property
+		south green-room
+		description "Blue room.\nYou are in blue room with calm ocean water. You can travel south to the green room."
+		short-description "Blue water room"
+	)
+)
+
+(location yellow-room
+	(property
+		north green-room
+		description "Yellow room.\nYou are in yellow room with sun-shine light. There's an exit to the north leading to green room."
+		short-description "Yellow sun room"
+	)
+)
+
+(thing tiable
+	(property
+		tied nil
+	)
+	(method (tie n)
+		(if (getp self tied)
+			(progn
+				(print "The ")
+				(print (getp (getp self tied) short-description))
+				(print " is already tied to ")
+				(print (getp self short-description))
+				(print ".\n")
+				(abort)
+			)
+		)
+		(if (= (class n) tiable)
+			(progn
+				(print "You can't tie rope to itself.\n")
+				(abort)
+			)
+		)
+		(setp self tied n)
+		(print "You tied the ")
+		(print (getp n short-description))
+		(print " to ")
+		(print (getp self short-description))
+		(print ".\n")
+	)
+	(method (untie)
+		(if (not (getp self tied))
+			(progn
+				(print "There's nothing tied to it.\n")
+				(abort)
+			)			
+		)
+		(setp self tied nil)
+		(print "You untied the suitcase from it.\n")
+	)
+)
+
+(tiable rope
+	(noun rope)
+	(property
+		description "There's a piece of rope here."
+		short-description "piece of rope"
+		initial-location blue-room
+	)
+	(method (tie n)
+		(avail rope)
+		(send first-end tie n)
+	)
+)
+
+(tiable first-end
+	(noun end)
+	(adjective one)
+	(property
+		initial-location nil
+		description "There's one end of a rope here."
+		short-description "one end of a rope"
+	)
+	(method (tie n &aux obj)
+		(if (not (or (setq obj (findobject curloc n))
+                (setq obj (findobject %actor n))))			
+			(avail first-end)
+		)
+		(send-super tie n)
+		(setp self short-description "one end of a rope (attached to suitcase)")
+		(setp self description "There's one end of a rope here (attached to suitcase).")		
+		;(connect (getp n parent) self)
+		(disconnect n)
+		(if (or (= (getp rope parent) curloc) (= (getp rope parent) %actor))
+			(progn
+				(disconnect rope)
+				(connect (getp self parent) second-end)
+			)
+		)
+	)
+)
+
+(tiable second-end
+	(noun end)
+	(adjective other)
+	(property
+		initial-location nil
+		description "There's other end of a rope here."
+		short-description "other end of a rope"
+	)
+	(method (tie n &aux obj)
+		(if (not (or (setq obj (findobject curloc n))
+                (setq obj (findobject %actor n))))			
+			(avail second-end)
+		)
+		(send-super tie n)
+		(setp self short-description "other end of a rope (attached to suitcase)")
+		(setp self description "There's other end of a rope here (attached to suitcase).")		
+		;(connect (getp n parent) self)
+		(disconnect n)
+		(if (or (= (getp rope parent) curloc) (= (getp rope parent) %actor))
+			(progn
+				(disconnect rope)
+				(connect (getp n parent) first-end)
+			)
+		)
+	)
+)
+
+(thing suitcase
+	(noun suitcase)
+	(property
+		description "There's a suitcase here."
+		short-description "suitcase"
+		initial-location blue-room
+	)
+)
+
+(define (find-rope)
+	(cond ((match rope $dobject) (return rope))
+		  ((match first-end $dobject) (return first-end))
+		  ((match second-end $dobject) (return second-end)))
+	nil
+)
+		 
+
+(action tie-act
+	(verb tie)
+	(preposition to)
+	(direct-object)
+	(indirect-object)
+	(code	
+		(if (setq %dobject (find-rope))
+			(progn
+				(setq %iobject (in-location $iobject))
+				(send %dobject tie %iobject)
+			)
+			(print "You need to specify rope or its end to tie something.\n")
+		)
+	)
+)
+
+(action untie-act
+	(verb untie)
+	(direct-object)
+	(code
+		(if (setq %dobject (find-rope))
+			(send %dobject untie)
+			(progn
+				(print "You can't see tied ")
+				(print-noun $dobject)
+				(print " here.\n")
+			)
+		)
+	)
+)
+
+(before
+	(setq %actor adventurer)
+	(if (and (or (= $action a-take) (= $action untie-act)) (or (match first-end $dobject) (match second-end $dobject)) (= (getp rope parent) curloc))
+		(progn
+			(disconnect rope)
+			(connect curloc first-end)
+			(connect curloc second-end)
+		)
+	)
+)
+
+(actor adventurer
+	(property initial-location blue-room)
+	(method (take n)
+		(send-super take n)
+		(check-rope self)
+	)	
+	(method (drop n)
+		(send-super drop n)
+		(check-rope curloc)
+	)
+	(method (move dir &aux prev)
+		(setq prev curloc)
+		(if (not (send-super move dir))
+			(abort)
+		)
+		(if (or (and (= (getp first-end parent) self) (= (getp second-end parent) prev))
+		        (and (= (getp second-end parent) self) (= (getp first-end parent) prev)))
+				(setq span 1)
+				(if (and (= span 1) (not (= (getp first-end parent) (getp self parent))) (not (= (getp second-end parent) (getp self parent))))
+					(if (= (getp first-end parent) self)
+						(progn (disconnect second-end) (connect prev second-end))
+						(progn (disconnect first-end) (connect prev first-end))
+					)
+					(if (or (= (getp first-end parent) self) (= (getp second-end parent) self))
+						(setq span 0)
+					)
+				)				
+			)
+		)		
+)
